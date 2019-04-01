@@ -1,23 +1,21 @@
-// Copyright © 2019 NAME HERE <EMAIL ADDRESS>
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package cmd
 
 import (
-	"fmt"
+	"context"
+	"net/url"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	ratelimiter "golang.org/x/time/rate"
+
+	"gitlab.appsflyer.com/rantav/elb-log-replay/play"
+)
+
+// Flags
+var (
+	targetHost *string
+	logFile    *string
+	rate       *int64
 )
 
 // playCmd represents the play command
@@ -25,20 +23,31 @@ var playCmd = &cobra.Command{
 	Use:   "play",
 	Short: "Play the an ELB log",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("play called")
+		target, err := url.Parse(*targetHost)
+		if err != nil {
+			log.Fatalf("Cannot parse target URL %s. %+v", *targetHost, err)
+		}
+		ctx := context.Background()
+		err = play.PlayLogFile(ctx, target, *logFile, ratelimiter.Limit(*rate))
+		if err != nil {
+			log.Errorf("Error %+v", err)
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(playCmd)
 
-	// Here you will define your flags and configuration settings.
+	targetHost = addRequiredStringFlag("target-host", "", "Target host to which paly traffic to, scheme://host:port (e.g. http://localhost:1235)")
+	logFile = addRequiredStringFlag("log-file", "", "Location of the log file")
+	rate = playCmd.Flags().Int64("rate", 0, "The rate at which request are made (requests per second). If <= 0 (or not provided) then rate is not limited")
+}
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// playCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// playCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+func addRequiredStringFlag(name, value, usage string) *string {
+	ref := playCmd.Flags().String(name, value, usage)
+	err := playCmd.MarkFlagRequired(name)
+	if err != nil {
+		panic(err)
+	}
+	return ref
 }
