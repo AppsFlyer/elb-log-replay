@@ -11,14 +11,17 @@ import (
 const monitoringFrequency = 2 * time.Second
 
 var (
-	successfulRequests uint64
-	failedRequests     uint64
-	discardedLogLines  uint64
+	successfulRequests  uint64
+	failedRequests      uint64
+	discardedLogLines   uint64
+	lastMeasurementTime time.Time
+	lastRequestCount    uint64
 )
 
 // Loops forever and emits stats every frequency duration
 func monitor(ctx context.Context, frequency time.Duration) {
 	ticker := time.NewTicker(frequency)
+	lastMeasurementTime = time.Now()
 	defer ticker.Stop()
 	for {
 		select {
@@ -45,9 +48,15 @@ func discard() {
 }
 
 func emitStats() {
+	now := time.Now()
+	timePassed := now.Sub(lastMeasurementTime)
+	lastMeasurementTime = now
 	success := atomic.LoadUint64(&successfulRequests)
 	failed := atomic.LoadUint64(&failedRequests)
 	disacarded := atomic.LoadUint64(&discardedLogLines)
-	log.Infof("\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d",
-		success, failed, disacarded, success+failed+disacarded, success+failed)
+	deltaSent := success + failed - lastRequestCount
+	lastRequestCount = success + failed
+	sendRate := uint64((float64(deltaSent) / float64(timePassed)) * float64(time.Second))
+	log.Infof("\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d. Throughput: %d/sec",
+		success, failed, disacarded, success+failed+disacarded, success+failed, sendRate)
 }
