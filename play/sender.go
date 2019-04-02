@@ -55,6 +55,7 @@ func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
 
 	request, err := http.NewRequest(line.method, u.String(), nil)
 	if err != nil {
+		fail()
 		return errors.Wrap(err, "error creating request")
 	}
 
@@ -71,7 +72,7 @@ func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
 	defer res.Body.Close()
 
 	log.Debugf("Response: %s", res.Status)
-	if res.StatusCode >= 200 && res.StatusCode < 300 {
+	if res.StatusCode >= 200 && res.StatusCode < 400 {
 		success()
 	} else {
 		fail()

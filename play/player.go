@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	ratelimiter "golang.org/x/time/rate"
 
@@ -31,12 +32,15 @@ func PlayLogFiles(ctx context.Context, target *url.URL, path string, rate rateli
 	go monitor(ctx, monitoringFrequency)
 	defer emitStats()
 	rateLimiter := createRateLimiter(rate)
+	wg := &sync.WaitGroup{}
 	for _, file := range files {
-		err := replayLogFile(ctx, target, file, rateLimiter)
+		wg.Add(1)
+		err := replayLogFile(ctx, target, file, rateLimiter, wg)
 		if err != nil {
 			log.Errorf("Error playing file %s: %+v", file, err)
 		}
 	}
+	wg.Wait()
 	return nil
 }
 
@@ -65,17 +69,24 @@ func findFiles(path string) []string {
 }
 
 // Replays a single log file
-func replayLogFile(ctx context.Context, target *url.URL, filePath string, rateLimiter *ratelimiter.Limiter) error {
-	log.Infof("opening log file %s", filePath)
+func replayLogFile(
+	ctx context.Context,
+	target *url.URL,
+	filePath string,
+	rateLimiter *ratelimiter.Limiter,
+	waitForFile *sync.WaitGroup,
+) error {
+	defer waitForFile.Done()
+	log.Infof("Playing log file %s", filePath)
 
 	f, err := os.Open(filePath)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	defer f.Close()
-
 	rdr := bufio.NewReader(f)
 
+	waitForLines := &sync.WaitGroup{}
 	for {
 		b, err := rdr.ReadBytes('\n')
 		if err != nil && err != io.EOF {
@@ -85,7 +96,8 @@ func replayLogFile(ctx context.Context, target *url.URL, filePath string, rateLi
 		if len(b) > 0 {
 			reqLine := strings.TrimSpace(string(b))
 			log.Debugf("replaying line: %s", reqLine)
-			err := send(ctx, target, reqLine, rateLimiter)
+			waitForLines.Add(1)
+			err := send(ctx, target, reqLine, rateLimiter, waitForLines)
 			if err != nil {
 				log.Errorf("%s", err)
 				continue
@@ -96,28 +108,41 @@ func replayLogFile(ctx context.Context, target *url.URL, filePath string, rateLi
 			break
 		}
 	}
-	log.Info("Done with file")
+	waitForLines.Wait()
+	log.Infof("Done with file %s", filePath)
 	return nil
 }
 
-func send(ctx context.Context, target *url.URL, line string, limiter *ratelimiter.Limiter) error {
+func send(
+	ctx context.Context,
+	target *url.URL,
+	line string,
+	limiter *ratelimiter.Limiter,
+	wg *sync.WaitGroup,
+) error {
 	if limiter != nil {
 		err := limiter.Wait(ctx)
 		if err != nil {
+			wg.Done()
 			return errors.WithStack(err)
 		}
 	}
 
 	logLine, err := parse(line)
 	if err != nil {
+		discard()
+		wg.Done()
 		return errors.WithStack(err)
 	}
-	if logLine.statusCode < 200 || logLine.statusCode >= 300 {
+	if logLine.statusCode < 200 || logLine.statusCode >= 400 {
 		// discard
-		log.Debugf("Discarding non 2xx line %v", logLine)
+		log.Debugf("Discarding non 2xx or 3xx line %v", logLine)
+		discard()
+		wg.Done()
 		return nil
 	}
 	go func() {
+		defer wg.Done()
 		err := sendRequest(ctx, target, logLine)
 		if err != nil {
 			log.Errorf("Error sending %+v", err)
