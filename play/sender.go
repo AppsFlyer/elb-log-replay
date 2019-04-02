@@ -30,7 +30,9 @@ var httpClient = &http.Client{
 			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).DialContext,
-		// MaxIdleConns:          0,
+		MaxIdleConns:          0, // unlimited
+		MaxIdleConnsPerHost:   0, // unlimited
+		MaxConnsPerHost:       250,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
@@ -44,6 +46,7 @@ var httpClient = &http.Client{
 func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
 	u, err := url.Parse(line.url)
 	if err != nil {
+		fail()
 		return errors.Wrapf(err, "error parsing URL %s", line.url)
 	}
 
@@ -61,12 +64,18 @@ func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
 	log.Debugf("Sending %s", request.URL.String())
 	res, err := httpClient.Do(request)
 	if err != nil {
+		fail()
 		return errors.Wrapf(err, "error sending request for %s", u.String())
 	}
 
 	defer res.Body.Close()
 
-	log.Infof("Response: %s", res.Status)
+	log.Debugf("Response: %s", res.Status)
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		success()
+	} else {
+		fail()
+	}
 	// Discard the request body.
 	// this forces the remote host to actually return all of the bytes we requested.
 	io.Copy(ioutil.Discard, res.Body)

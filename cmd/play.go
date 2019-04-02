@@ -14,7 +14,7 @@ import (
 // Flags
 var (
 	targetHost *string
-	logFile    *string
+	logFiles   *string
 	rate       *int64
 )
 
@@ -28,7 +28,7 @@ var playCmd = &cobra.Command{
 			log.Fatalf("Cannot parse target URL %s. %+v", *targetHost, err)
 		}
 		ctx := context.Background()
-		err = play.PlayLogFile(ctx, target, *logFile, ratelimiter.Limit(*rate))
+		err = play.PlayLogFiles(ctx, target, *logFiles, ratelimiter.Limit(*rate))
 		if err != nil {
 			log.Errorf("Error %+v", err)
 		}
@@ -39,7 +39,7 @@ func init() {
 	rootCmd.AddCommand(playCmd)
 
 	targetHost = addRequiredStringFlag("target-host", "", "Target host to which paly traffic to, scheme://host:port (e.g. http://localhost:1235)")
-	logFile = addRequiredStringFlag("log-file", "", "Location of the log file")
+	logFiles = addRequiredStringFlag("log-files", "", "Location of the log files. We look for all files in this path ending with *.txt")
 	rate = playCmd.Flags().Int64("rate", 0, "The rate at which request are made (requests per second). If <= 0 (or not provided) then rate is not limited")
 }
 

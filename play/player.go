@@ -3,10 +3,11 @@ package play
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strings"
 
 	ratelimiter "golang.org/x/time/rate"
@@ -17,37 +18,30 @@ import (
 
 // LineLog is the struct to analyce and store a line
 type logLine struct {
-	url       string
-	method    string
-	userAgent string
-}
-
-var (
-	reClasic      *regexp.Regexp
-	matcherClasic []string
-)
-
-func init() {
-	reClasic = regexp.MustCompile(`(?P<date>[^Z]+Z) (?P<elb>[^\s]+) (?P<ipclient>[^:]+?):[0-9]+ (?P<ipnode>[^:]+?):[0-9]+ (?P<reqtime>[0-9\.]+) (?P<backtime>[0-9\.]+) (?P<restime>[0-9\.]+) (?P<elbcode>[0-9]{3}) (?P<backcode>[0-9]{3}) (?P<lenght1>[0-9]+) (?P<lenght2>[0-9]+) "(?P<Method>[A-Z]+) (?P<URL>[^"]+) HTTP/[0-9\.]+" "(?P<useragent>[^"]+)" .*`)
-	matcherClasic = reClasic.SubexpNames()
+	url        string
+	method     string
+	userAgent  string
+	statusCode int
 }
 
 // PlayLogFile plays an ELB log file at a given rate (per second)
-func PlayLogFile(ctx context.Context, target *url.URL, path string, rate ratelimiter.Limit) error {
-	log.Infof("opening log file %s", path)
-
-	f, err := os.Open(path)
-	if err != nil {
-		return errors.WithStack(err)
+// path is a path to all log files. We would look for all log files ending with txt, e.g. path/*.txt
+func PlayLogFiles(ctx context.Context, target *url.URL, path string, rate ratelimiter.Limit) error {
+	files := findFiles(path)
+	go monitor(ctx, monitoringFrequency)
+	defer emitStats()
+	rateLimiter := createRateLimiter(rate)
+	for _, file := range files {
+		err := replayLogFile(ctx, target, file, rateLimiter)
+		if err != nil {
+			log.Errorf("Error playing file %s: %+v", file, err)
+		}
 	}
-	defer f.Close()
-	return replayLogFile(ctx, target, f, rate)
+	return nil
 }
 
-// Replays a log file
-func replayLogFile(ctx context.Context, target *url.URL, r io.Reader, rate ratelimiter.Limit) error {
-	rdr := bufio.NewReader(r)
-
+// creates a rate limiter. If the rate is 0 or less, returns nill (meaning no limit)
+func createRateLimiter(rate ratelimiter.Limit) *ratelimiter.Limiter {
 	var rateLimiter *ratelimiter.Limiter
 	if rate > 0 {
 		// Allow burst of 1/10
@@ -57,6 +51,30 @@ func replayLogFile(ctx context.Context, target *url.URL, r io.Reader, rate ratel
 		}
 		rateLimiter = ratelimiter.NewLimiter(rate, burst)
 	}
+	return rateLimiter
+}
+
+func findFiles(path string) []string {
+	path = fmt.Sprintf("%s/*.txt", path)
+	matches, err := filepath.Glob(path)
+	if err != nil {
+		panic(err)
+	}
+	log.Infof("Found %d log files", len(matches))
+	return matches
+}
+
+// Replays a single log file
+func replayLogFile(ctx context.Context, target *url.URL, filePath string, rateLimiter *ratelimiter.Limiter) error {
+	log.Infof("opening log file %s", filePath)
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	defer f.Close()
+
+	rdr := bufio.NewReader(f)
 
 	for {
 		b, err := rdr.ReadBytes('\n')
@@ -94,6 +112,11 @@ func send(ctx context.Context, target *url.URL, line string, limiter *ratelimite
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	if logLine.statusCode < 200 || logLine.statusCode >= 300 {
+		// discard
+		log.Debugf("Discarding non 2xx line %v", logLine)
+		return nil
+	}
 	go func() {
 		err := sendRequest(ctx, target, logLine)
 		if err != nil {
@@ -102,18 +125,4 @@ func send(ctx context.Context, target *url.URL, line string, limiter *ratelimite
 	}()
 
 	return nil
-}
-
-// parse the raw record line
-func parse(line string) (*logLine, error) {
-	matches := reClasic.FindAllStringSubmatch(line, -1)
-	if matches == nil {
-		return nil, errors.Errorf("Failed to parse the line %s", line)
-	}
-
-	return &logLine{
-		method:    matches[0][12],
-		url:       matches[0][13],
-		userAgent: matches[0][14],
-	}, nil
 }
