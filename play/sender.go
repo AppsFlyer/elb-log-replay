@@ -14,6 +14,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const numSenders = 2048
+
 // Create a HTTP client with sensible defaults
 var httpClient = &http.Client{
 	// Disable redirects, some requests have endless redirect loops
@@ -31,8 +33,8 @@ var httpClient = &http.Client{
 			DualStack: true,
 		}).DialContext,
 		MaxIdleConns:          0, // unlimited
-		MaxIdleConnsPerHost:   0, // unlimited
-		MaxConnsPerHost:       250,
+		MaxIdleConnsPerHost:   2048,
+		MaxConnsPerHost:       2048,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
@@ -44,6 +46,7 @@ var httpClient = &http.Client{
 
 // Sends a request and consumes the response body
 func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
+	log.Debugf("replaying line: %v", line)
 	u, err := url.Parse(line.url)
 	if err != nil {
 		fail()
