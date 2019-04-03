@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const numSenders = 2048
+const numSenders = 16
 
 // Create a HTTP client with sensible defaults
 var httpClient = &http.Client{
