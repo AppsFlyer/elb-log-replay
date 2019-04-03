@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	ratelimiter "golang.org/x/time/rate"
 
@@ -32,16 +31,67 @@ func PlayLogFiles(ctx context.Context, target *url.URL, path string, rate rateli
 	go monitor(ctx, monitoringFrequency)
 	defer emitStats()
 	rateLimiter := createRateLimiter(rate)
-	wg := &sync.WaitGroup{}
-	for _, file := range files {
-		wg.Add(1)
-		err := replayLogFile(ctx, target, file, rateLimiter, wg)
-		if err != nil {
-			log.Errorf("Error playing file %s: %+v", file, err)
-		}
+	lines := generateLogLines(ctx, files, rateLimiter)
+	var dones []<-chan struct{}
+	for i := 0; i <= numSenders; i++ {
+		done := sendLines(ctx, target, lines)
+		dones = append(dones, done)
 	}
-	wg.Wait()
+	waitForAll(dones)
 	return nil
+}
+
+func generateLogLines(
+	ctx context.Context,
+	files []string,
+	rateLimiter *ratelimiter.Limiter,
+) <-chan string {
+	lines := make(chan string, 2*numSenders)
+	go func() {
+		for _, file := range files {
+			err := replayLogFile(ctx, file, rateLimiter, lines)
+			if err != nil {
+				log.Errorf("Error playing file %s: %+v", file, err)
+			}
+		}
+		close(lines)
+	}()
+	return lines
+}
+
+func sendLines(
+	ctx context.Context,
+	target *url.URL,
+	lines <-chan string,
+) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for line := range lines {
+			logLine, err := parse(line)
+			if err != nil {
+				discard()
+				log.Debugf("Error parsing line %s. \t %s", line, err)
+				continue
+			}
+			if logLine.statusCode < 200 || logLine.statusCode >= 400 {
+				discard()
+				log.Debugf("Discarding non 2xx or 3xx line %v", logLine)
+				continue
+			}
+			err = sendRequest(ctx, target, logLine)
+			if err != nil {
+				log.Errorf("Error sending %+v", err)
+			}
+		}
+	}()
+	return done
+}
+
+func waitForAll(cs []<-chan struct{}) {
+	for _, c := range cs {
+		<-c
+	}
 }
 
 // creates a rate limiter. If the rate is 0 or less, returns nill (meaning no limit)
@@ -71,12 +121,10 @@ func findFiles(path string) []string {
 // Replays a single log file
 func replayLogFile(
 	ctx context.Context,
-	target *url.URL,
 	filePath string,
-	rateLimiter *ratelimiter.Limiter,
-	waitForFile *sync.WaitGroup,
+	limiter *ratelimiter.Limiter,
+	lines chan<- string,
 ) error {
-	defer waitForFile.Done()
 	log.Infof("Playing log file %s", filePath)
 
 	f, err := os.Open(filePath)
@@ -86,7 +134,6 @@ func replayLogFile(
 	defer f.Close()
 	rdr := bufio.NewReader(f)
 
-	waitForLines := &sync.WaitGroup{}
 	for {
 		b, err := rdr.ReadBytes('\n')
 		if err != nil && err != io.EOF {
@@ -94,60 +141,18 @@ func replayLogFile(
 		}
 
 		if len(b) > 0 {
-			reqLine := strings.TrimSpace(string(b))
-			log.Debugf("replaying line: %s", reqLine)
-			waitForLines.Add(1)
-			err := send(ctx, target, reqLine, rateLimiter, waitForLines)
+			line := strings.TrimSpace(string(b))
+			err = limiter.Wait(ctx)
 			if err != nil {
-				log.Errorf("%s", err)
-				continue
+				log.Errorf("Error waiting for rate limiter. %s", err)
 			}
+			lines <- line
 		}
 
 		if err == io.EOF {
 			break
 		}
 	}
-	waitForLines.Wait()
 	log.Infof("Done with file %s", filePath)
-	return nil
-}
-
-func send(
-	ctx context.Context,
-	target *url.URL,
-	line string,
-	limiter *ratelimiter.Limiter,
-	wg *sync.WaitGroup,
-) error {
-	if limiter != nil {
-		err := limiter.Wait(ctx)
-		if err != nil {
-			wg.Done()
-			return errors.WithStack(err)
-		}
-	}
-
-	logLine, err := parse(line)
-	if err != nil {
-		discard()
-		wg.Done()
-		return errors.WithStack(err)
-	}
-	if logLine.statusCode < 200 || logLine.statusCode >= 400 {
-		// discard
-		log.Debugf("Discarding non 2xx or 3xx line %v", logLine)
-		discard()
-		wg.Done()
-		return nil
-	}
-	go func() {
-		defer wg.Done()
-		err := sendRequest(ctx, target, logLine)
-		if err != nil {
-			log.Errorf("Error sending %+v", err)
-		}
-	}()
-
 	return nil
 }

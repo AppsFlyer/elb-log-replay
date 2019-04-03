@@ -57,6 +57,6 @@ func emitStats() {
 	deltaSent := success + failed - lastRequestCount
 	lastRequestCount = success + failed
 	sendRate := uint64((float64(deltaSent) / float64(timePassed)) * float64(time.Second))
-	log.Infof("\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d. Throughput: %d/sec",
+	log.Infof("\t\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d. \t Throughput: %d/sec",
 		success, failed, disacarded, success+failed+disacarded, success+failed, sendRate)
 }
