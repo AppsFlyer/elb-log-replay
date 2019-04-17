@@ -14,8 +14,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const numSenders = 16
-
 // Create a HTTP client with sensible defaults
 var httpClient = &http.Client{
 	// Disable redirects, some requests have endless redirect loops
