@@ -1,7 +1,7 @@
 package main
 
 import (
-	"gitlab.appsflyer.com/rantav/elb-log-replay/cmd"
+	"github.com/appsflyer/elb-log-replay/cmd"
 )
 
 func main() {

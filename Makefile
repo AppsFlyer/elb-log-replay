@@ -5,5 +5,11 @@ run:
 		--rate 1000 \
 		--num-senders 32
 
-build-linux:
+build: get
+	go build
+
+get:
+	go get
+
+build-linux: get
 	GOOS=linux GOARCH=386 go build

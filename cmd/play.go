@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	ratelimiter "golang.org/x/time/rate"
 
-	"gitlab.appsflyer.com/rantav/elb-log-replay/play"
+	"github.com/appsflyer/elb-log-replay/play"
 )
 
 // Flags

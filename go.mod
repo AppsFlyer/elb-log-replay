@@ -1,4 +1,4 @@
-module gitlab.appsflyer.com/rantav/elb-log-replay
+module github.com/appsflyer/elb-log-replay
 
 go 1.12
 
