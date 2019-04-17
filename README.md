@@ -7,17 +7,17 @@ A typical use case when creating a new feature is to download the log files from
 
 Compile and run: 
 ```
-	go run main.go play \
-		--log-files=/path/to/log.files/ \
-		--target-host http://localhost:8080 \
-		--rate 1000 \
-		--num-senders 32
+go run main.go play \
+	--log-files=/path/to/log.files/ \
+	--target-host http://localhost:8080 \
+	--rate 1000 \
+	--num-senders 32
 ```
 
 Or build and run:
 ```
 $ go build
-$ elb-log-replay play --log-files=...
+$ ./elb-log-replay play --log-files=...
 ```
 
 ### CLI args
