@@ -2,7 +2,8 @@ run:
 	go run main.go play \
 		--log-files=/Users/ran/Downloads/ \
 		--target-host http://localhost:8080 \
-		--rate 1000
+		--rate 1000 \
+		--num-senders 32
 
 build-linux:
 	GOOS=linux GOARCH=386 go build

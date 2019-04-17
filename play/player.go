@@ -26,14 +26,20 @@ type logLine struct {
 
 // PlayLogFile plays an ELB log file at a given rate (per second)
 // path is a path to all log files. We would look for all log files ending with txt, e.g. path/*.txt
-func PlayLogFiles(ctx context.Context, target *url.URL, path string, rate ratelimiter.Limit) error {
+func PlayLogFiles(
+	ctx context.Context,
+	target *url.URL,
+	path string,
+	rate ratelimiter.Limit,
+	numSenders uint,
+) error {
 	files := findFiles(path)
 	go monitor(ctx, monitoringFrequency)
 	defer emitStats()
 	rateLimiter := createRateLimiter(rate)
-	lines := generateLogLines(ctx, files, rateLimiter)
+	lines := generateLogLines(ctx, files, rateLimiter, 2*numSenders)
 	var dones []<-chan struct{}
-	for i := 0; i <= numSenders; i++ {
+	for i := uint(0); i <= numSenders; i++ {
 		done := sendLines(ctx, target, lines)
 		dones = append(dones, done)
 	}
@@ -45,8 +51,9 @@ func generateLogLines(
 	ctx context.Context,
 	files []string,
 	rateLimiter *ratelimiter.Limiter,
+	bufferSize uint,
 ) <-chan string {
-	lines := make(chan string, 2*numSenders)
+	lines := make(chan string, bufferSize)
 	go func() {
 		for _, file := range files {
 			err := replayLogFile(ctx, file, rateLimiter, lines)
