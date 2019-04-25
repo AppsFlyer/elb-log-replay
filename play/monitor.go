@@ -2,6 +2,7 @@ package play
 
 import (
 	"context"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,7 @@ var (
 	discardedLogLines   uint64
 	lastMeasurementTime time.Time
 	lastRequestCount    uint64
+	latencySinceEpochMs uint64
 )
 
 // Loops forever and emits stats every frequency duration
@@ -56,7 +58,9 @@ func emitStats() {
 	disacarded := atomic.LoadUint64(&discardedLogLines)
 	deltaSent := success + failed - lastRequestCount
 	lastRequestCount = success + failed
-	sendRate := uint64((float64(deltaSent) / float64(timePassed)) * float64(time.Second))
-	log.Infof("\t\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d. \t Throughput: %d/sec",
-		success, failed, disacarded, success+failed+disacarded, success+failed, sendRate)
+	sendRate := uint64(math.Round((float64(deltaSent) / float64(timePassed)) * float64(time.Second)))
+	passedLatencySinceEpocMs := atomic.SwapUint64(&latencySinceEpochMs, 0)
+	avgLatencyMs := passedLatencySinceEpocMs / deltaSent
+	log.Infof("\t\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d. \t Throughput: %d/sec \t Latency: %dms",
+		success, failed, disacarded, success+failed+disacarded, success+failed, sendRate, avgLatencyMs)
 }

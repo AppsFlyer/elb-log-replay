@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -64,6 +65,7 @@ func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
 	request.Header.Set("Host", target.Host)
 
 	log.Debugf("Sending %s", request.URL.String())
+	startTime := time.Now()
 	res, err := httpClient.Do(request)
 	if err != nil {
 		fail()
@@ -81,6 +83,9 @@ func sendRequest(ctx context.Context, target *url.URL, line *logLine) error {
 	// Discard the request body.
 	// this forces the remote host to actually return all of the bytes we requested.
 	io.Copy(ioutil.Discard, res.Body)
+
+	elapsed := time.Now().Sub(startTime)
+	atomic.AddUint64(&latencySinceEpochMs, uint64(elapsed/time.Millisecond))
 
 	return nil
 }

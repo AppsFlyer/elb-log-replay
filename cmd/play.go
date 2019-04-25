@@ -29,6 +29,9 @@ var playCmd = &cobra.Command{
 			log.Fatalf("Cannot parse target URL %s. %+v", *targetHost, err)
 		}
 		ctx := context.Background()
+		if *rate == 0 {
+			log.Fatalf("Rate must be > 0")
+		}
 		err = play.PlayLogFiles(ctx, target, *logFiles, ratelimiter.Limit(*rate), *numSenders)
 		if err != nil {
 			log.Errorf("Error %+v", err)
