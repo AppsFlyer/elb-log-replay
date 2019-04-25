@@ -60,7 +60,12 @@ func emitStats() {
 	lastRequestCount = success + failed
 	sendRate := uint64(math.Round((float64(deltaSent) / float64(timePassed)) * float64(time.Second)))
 	passedLatencySinceEpocMs := atomic.SwapUint64(&latencySinceEpochMs, 0)
-	avgLatencyMs := passedLatencySinceEpocMs / deltaSent
+	var avgLatencyMs int64
+	if deltaSent == 0 {
+		avgLatencyMs = -1
+	} else {
+		avgLatencyMs = int64(passedLatencySinceEpocMs / deltaSent)
+	}
 	log.Infof("\t\tSTATS: success: %d, failed: %d, discarded: %d. Total lines: %d. Total sent: %d. \t Throughput: %d/sec \t Latency: %dms",
 		success, failed, disacarded, success+failed+disacarded, success+failed, sendRate, avgLatencyMs)
 }

@@ -116,11 +116,16 @@ func createRateLimiter(rate ratelimiter.Limit) *ratelimiter.Limiter {
 }
 
 func findFiles(path string) []string {
-	path = fmt.Sprintf("%s/*.txt", path)
-	matches, err := filepath.Glob(path)
-	if err != nil {
-		panic(err)
+	finder := func(path, suffix string) []string {
+		pathWithSuffix := fmt.Sprintf("%s/*.%s", path, suffix)
+		matches, err := filepath.Glob(pathWithSuffix)
+		if err != nil {
+			panic(err)
+		}
+		return matches
 	}
+	matches := finder(path, "txt")
+	matches = append(matches, finder(path, "log")...)
 	log.Infof("Found %d log files", len(matches))
 	return matches
 }
