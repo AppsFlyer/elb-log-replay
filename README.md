@@ -52,19 +52,29 @@ Eventually we collect the stats (actual rate and latency) and output them for mo
 
 ```
                                                                  +------+ send to server
-+------+                                                 +------>+sender+--------------->
++------+                                                 +------>|sender|--------------->
 | Log  +--------------+                                  |       +------+
 | file |              |                                  |
-+------+              |                                  |       +------+ send to server
-                 +----v-----+                            | +---->+sender+--------------->
++------+              v                                  |       +------+ send to server
+                 +----------+                            | ----->|sender|--------------->
 +------+         |  Log     |                 +----------+--+    +------+
-| Log  |         |  files   +----------------->    channel  |
-| file +--------->  reader  |  rate limited   +----------+--+    +------+ send to server
-+------+         +----^-----+                            | +---->+sender+--------------->
-                      |                                  |       +------+
+| Log  |         |  files   +---------------->|    channel  |
+| file +-------->|  reader  |  rate limited   +----------+--+    +------+ send to server
++------+         +----------+                            | ----->|sender|--------------->
+                      ^                                  |       +------+
 +------+              |                                  |
 | Log  |              |                                  |       +------+ send to server
-| file +--------------+                                  +------>+sender+--------------->
+| file +--------------+                                  +------>|sender|--------------->
 +------+                                                         +------+
 
 ```
+
+## Benchmark
+Throughput is important so here's a small scale benchmark resutls.  TLDR: We're able to play logs 60k lines per second
+
+Hardware: 
+* elb-log-replay run on AWS `m5.2xlarge` instance
+* Sending request to a local network nginx server running on another AWS `m5.xlarge` instance
+
+Throughput: **`60k`** reqests per second . 
+Latency: submilisecond (< `1ms`)
