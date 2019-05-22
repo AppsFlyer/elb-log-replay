@@ -13,10 +13,11 @@ import (
 
 // Flags
 var (
-	targetHost *string
-	logFiles   *string
-	rate       *int64
-	numSenders *uint
+	targetHost       *string
+	logFiles         *string
+	rate             *int64
+	numSenders       *uint
+	pprofBindAddress *string
 )
 
 // playCmd represents the play command
@@ -32,6 +33,9 @@ var playCmd = &cobra.Command{
 		if *rate == 0 {
 			log.Fatalf("Rate must be > 0")
 		}
+		if *pprofBindAddress != "" {
+			play.EnablePprof(*pprofBindAddress)
+		}
 		err = play.PlayLogFiles(ctx, target, *logFiles, ratelimiter.Limit(*rate), *numSenders)
 		if err != nil {
 			log.Errorf("Error %+v", err)
@@ -46,6 +50,7 @@ func init() {
 	logFiles = addRequiredStringFlag("log-files", "", "Location of the log files. We look for all files in this path ending with *.txt")
 	rate = playCmd.Flags().Int64("rate", 0, "The rate at which request are made (requests per second). If <= 0 (or not provided) then rate is not limited")
 	numSenders = playCmd.Flags().Uint("num-senders", 32, "The number of HTTP executors (senders). This is the number of parallel HTTP clients that send HTTP requests")
+	pprofBindAddress = playCmd.Flags().String("pprof-bind-address", "", "Bind address for pprof, e.g. :6060 or 127.0.0.1:6060. If empty, (default) then pprof is disabled")
 }
 
 func addRequiredStringFlag(name, value, usage string) *string {

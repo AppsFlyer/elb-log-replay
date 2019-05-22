@@ -2,7 +2,10 @@ package play
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"net/http"
+	_ "net/http/pprof"
 	"sync/atomic"
 	"time"
 
@@ -35,6 +38,19 @@ func monitor(ctx context.Context, frequency time.Duration) {
 			emitStats()
 		}
 	}
+}
+
+func EnablePprof(bindAddress string) {
+	go func() {
+		var httpAddress string
+		if bindAddress[0] == ':' {
+			httpAddress = fmt.Sprintf("localhost%s", bindAddress)
+		} else {
+			httpAddress = bindAddress
+		}
+		log.Infof("Enabling pprof, bound to %s. \t open http://%s/debug/pprof/", bindAddress, httpAddress)
+		log.Error(http.ListenAndServe(bindAddress, nil))
+	}()
 }
 
 func success() {
